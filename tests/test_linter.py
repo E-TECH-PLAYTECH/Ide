@@ -1,41 +1,22 @@
+from dataclasses import dataclass
 from datetime import datetime
-import sys
-import types
 import unittest
 
-
-sqlmodel_stub = types.ModuleType("sqlmodel")
-
-
-class SQLModel:
-    def __init_subclass__(cls, **kwargs):
-        return super().__init_subclass__()
-
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-
-def Field(*args, **kwargs):
-    return None
-
-
-sqlmodel_stub.SQLModel = SQLModel
-sqlmodel_stub.Field = Field
-sys.modules.setdefault("sqlmodel", sqlmodel_stub)
-
 from lifeos.linter import check_overlaps
-from lifeos.models import Event
 
 
-def make_event(event_id: str, start_hour: int, start_minute: int, end_hour: int, end_minute: int) -> Event:
-    return Event(
+@dataclass
+class EventPayload:
+    id: str
+    start_time: datetime
+    end_time: datetime
+
+
+def make_event(event_id: str, start_hour: int, start_minute: int, end_hour: int, end_minute: int) -> EventPayload:
+    return EventPayload(
         id=event_id,
-        content=event_id,
-        tags="",
         start_time=datetime(2024, 1, 1, start_hour, start_minute),
         end_time=datetime(2024, 1, 1, end_hour, end_minute),
-        is_fixed=False,
     )
 
 

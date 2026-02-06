@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Protocol
 
-from .models import Diagnostic, Event
+from .models import Diagnostic
 
 
-def check_fragmentation(events: list[Event]) -> list[Diagnostic]:
+class LintEventLike(Protocol):
+    id: str
+    start_time: datetime
+    end_time: datetime
+
+
+def check_fragmentation(events: list[LintEventLike]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     sorted_events = sorted(events, key=lambda event: event.start_time)
 
@@ -26,7 +33,7 @@ def check_fragmentation(events: list[Event]) -> list[Diagnostic]:
     return diagnostics
 
 
-def check_overlaps(events: list[Event]) -> list[Diagnostic]:
+def check_overlaps(events: list[LintEventLike]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     sorted_events = sorted(events, key=lambda event: event.start_time)
 
@@ -55,7 +62,7 @@ def check_overlaps(events: list[Event]) -> list[Diagnostic]:
     return diagnostics
 
 
-def lint_events(events: list[Event]) -> list[Diagnostic]:
+def lint_events(events: list[LintEventLike]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     diagnostics.extend(check_fragmentation(events))
     diagnostics.extend(check_overlaps(events))
