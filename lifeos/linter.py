@@ -30,17 +30,27 @@ def check_overlaps(events: list[Event]) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     sorted_events = sorted(events, key=lambda event: event.start_time)
 
-    for current_event, next_event in zip(sorted_events, sorted_events[1:]):
-        if next_event.start_time < current_event.end_time:
+    if not sorted_events:
+        return diagnostics
+
+    active_end = sorted_events[0].end_time
+
+    for next_event in sorted_events[1:]:
+        if next_event.start_time < active_end:
             diagnostics.append(
                 Diagnostic(
                     severity="ERROR",
                     message="Schedule overlap detected",
                     start=next_event.start_time,
-                    end=min(next_event.end_time, current_event.end_time),
+                    end=min(next_event.end_time, active_end),
                     event_id=next_event.id,
                 )
             )
+
+        if next_event.end_time > active_end:
+            active_end = next_event.end_time
+
+    diagnostics.sort(key=lambda item: (item.start, item.end or item.start, item.event_id or ""))
 
     return diagnostics
 
