@@ -134,6 +134,56 @@ class ApiValidationTests(unittest.TestCase):
 
         self.assertEqual(status_code, 422)
 
+    def test_lint_accepts_payload_only_event_shape(self) -> None:
+        payload = {
+            "events": [
+                {
+                    "id": "event-1",
+                    "start_time": "2024-01-10T09:00:00",
+                    "end_time": "2024-01-10T10:00:00",
+                },
+                {
+                    "id": "event-2",
+                    "start_time": "2024-01-10T09:30:00",
+                    "end_time": "2024-01-10T10:30:00",
+                },
+            ]
+        }
+
+        status_code, body = self._post_json("/lint", payload)
+
+        self.assertEqual(status_code, 200)
+        self.assertEqual(len(body["diagnostics"]), 1)
+        self.assertEqual(body["diagnostics"][0]["event_id"], "event-2")
+
+    def test_lint_ignores_extra_event_fields_for_compatibility(self) -> None:
+        payload = {
+            "events": [
+                {
+                    "id": "event-3",
+                    "content": "Focus block",
+                    "tags": "deep-work",
+                    "is_fixed": False,
+                    "start_time": "2024-01-10T13:00:00",
+                    "end_time": "2024-01-10T14:00:00",
+                },
+                {
+                    "id": "event-4",
+                    "content": "Break",
+                    "tags": "rest",
+                    "is_fixed": False,
+                    "start_time": "2024-01-10T13:20:00",
+                    "end_time": "2024-01-10T13:40:00",
+                },
+            ]
+        }
+
+        status_code, body = self._post_json("/lint", payload)
+
+        self.assertEqual(status_code, 200)
+        self.assertEqual(len(body["diagnostics"]), 1)
+        self.assertEqual(body["diagnostics"][0]["event_id"], "event-4")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -82,8 +82,14 @@ class Diagnostic(SQLModel):
     event_id: Optional[str] = None
 
 
+class LintEventInput(SQLModel):
+    id: str
+    start_time: datetime
+    end_time: datetime
+
+
 class LintRequest(SQLModel):
-    events: list[Event]
+    events: list[LintEventInput]
 
 
 class LintResponse(SQLModel):
