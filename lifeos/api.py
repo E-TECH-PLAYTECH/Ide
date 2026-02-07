@@ -17,6 +17,7 @@ from .database import database_is_reachable, get_session
 from .linter import lint_events
 from .logging_utils import configure_logging, log_event
 from .metrics import metrics
+from .planner import build_plan
 from .models import (
     Event,
     EventCreate,
@@ -24,6 +25,8 @@ from .models import (
     EventUpdate,
     LintRequest,
     LintResponse,
+    PlannerRequest,
+    PlannerResponse,
     Task,
     TaskCreate,
     TaskDependency,
@@ -624,6 +627,11 @@ def list_project_tasks(
     statement = statement.order_by(Task.deadline.is_(None), Task.deadline, Task.id).limit(limit).offset(offset)
     tasks = list(session.exec(statement).all())
     return _build_task_reads(session, tasks)
+
+
+@app.post("/plan", response_model=PlannerResponse, summary="Generate a deterministic planning proposal")
+def plan(request: PlannerRequest = Body(...)) -> PlannerResponse:
+    return build_plan(request)
 
 
 @app.post("/lint", response_model=LintResponse, summary="Lint events from request body")
