@@ -599,13 +599,13 @@ async def lint(
         },
     )
 ) -> LintResponse:
-    diagnostics = lint_events(request.events)
-    return LintResponse(diagnostics=diagnostics)
+    diagnostics, summary = lint_events(request.events)
+    return LintResponse(diagnostics=diagnostics, summary=summary)
 
 
 @app.get("/lint", response_model=LintResponse, summary="Lint persisted events")
 def lint_from_db(session: Session = Depends(get_session)) -> LintResponse:
     statement = select(Event)
     events = list(session.exec(statement).all())
-    diagnostics = lint_events(events)
-    return LintResponse(diagnostics=diagnostics)
+    diagnostics, summary = lint_events(events)
+    return LintResponse(diagnostics=diagnostics, summary=summary)

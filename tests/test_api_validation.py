@@ -257,6 +257,9 @@ class ApiValidationTests(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertEqual(len(body["diagnostics"]), 1)
         self.assertEqual(body["diagnostics"][0]["event_id"], "event-2")
+        self.assertEqual(body["diagnostics"][0]["code"], "OVERLAP")
+        self.assertIn("summary", body)
+        self.assertIn("severity_counts", body["summary"])
 
     def test_lint_ignores_extra_event_fields_for_compatibility(self) -> None:
         payload = {
@@ -285,6 +288,8 @@ class ApiValidationTests(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertEqual(len(body["diagnostics"]), 1)
         self.assertEqual(body["diagnostics"][0]["event_id"], "event-4")
+        self.assertEqual(body["diagnostics"][0]["code"], "OVERLAP")
+        self.assertIn("top_blocking_issues", body["summary"])
 
 
 if __name__ == "__main__":

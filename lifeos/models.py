@@ -227,17 +227,29 @@ class RecurringRule(SQLModel, table=True):
 
 
 class Diagnostic(SQLModel):
+    code: str
     severity: DiagnosticSeverity
     message: str
     start: datetime
     end: Optional[datetime] = None
     event_id: Optional[str] = None
+    hint: Optional[str] = None
+
+
+class LintSummary(SQLModel):
+    severity_counts: dict[DiagnosticSeverity, int] = Field(default_factory=dict)
+    top_blocking_issues: list[Diagnostic] = Field(default_factory=list)
 
 
 class LintEventInput(SQLModel):
     id: str
     start_time: datetime
     end_time: datetime
+    project_id: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    dependency_ids: list[str] = Field(default_factory=list)
+    deadline: Optional[datetime] = None
+    estimated_duration_minutes: Optional[int] = None
 
 
 class LintRequest(SQLModel):
@@ -246,3 +258,4 @@ class LintRequest(SQLModel):
 
 class LintResponse(SQLModel):
     diagnostics: list[Diagnostic]
+    summary: LintSummary
