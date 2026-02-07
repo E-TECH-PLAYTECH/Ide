@@ -17,6 +17,14 @@ class ApiValidationTests(unittest.TestCase):
         self.port = self._get_free_port()
         env = os.environ.copy()
         env["LIFEOS_DATABASE_URL"] = f"sqlite:///{self.temp_db.name}"
+        env["LIFEOS_ENV"] = "test"
+        subprocess.run(
+            ["python", "-m", "alembic", "upgrade", "head"],
+            env=env,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         self.server = subprocess.Popen(
             [
                 "python",
