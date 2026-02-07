@@ -56,7 +56,7 @@ class ApiIntegrationTestCase(unittest.TestCase):
             return int(sock.getsockname()[1])
 
     def _wait_for_server(self) -> None:
-        health_url = f"http://127.0.0.1:{self.port}/health"
+        health_url = f"http://127.0.0.1:{self.port}/health/live"
         for _ in range(50):
             try:
                 with request.urlopen(health_url, timeout=0.2) as response:
@@ -67,18 +67,22 @@ class ApiIntegrationTestCase(unittest.TestCase):
         self.fail("Server did not start in time")
 
     def request_json(
-        self, path: str, method: str = "GET", payload: dict[str, Any] | list[Any] | None = None
+        self,
+        path: str,
+        method: str = "GET",
+        payload: dict[str, Any] | list[Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> tuple[int, Any]:
         data = None
-        headers: dict[str, str] = {}
+        request_headers: dict[str, str] = dict(headers or {})
         if payload is not None:
             data = json.dumps(payload).encode("utf-8")
-            headers["Content-Type"] = "application/json"
+            request_headers["Content-Type"] = "application/json"
 
         req = request.Request(
             f"http://127.0.0.1:{self.port}{path}",
             data=data,
-            headers=headers,
+            headers=request_headers,
             method=method,
         )
         try:
@@ -90,6 +94,36 @@ class ApiIntegrationTestCase(unittest.TestCase):
             raw = exc.read().decode("utf-8")
             body = json.loads(raw) if raw else None
             return exc.code, body
+
+
+    def request_json_with_headers(
+        self,
+        path: str,
+        method: str = "GET",
+        payload: dict[str, Any] | list[Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, Any, dict[str, str]]:
+        data = None
+        request_headers: dict[str, str] = dict(headers or {})
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+            request_headers["Content-Type"] = "application/json"
+
+        req = request.Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=data,
+            headers=request_headers,
+            method=method,
+        )
+        try:
+            with request.urlopen(req, timeout=1) as response:
+                raw = response.read().decode("utf-8")
+                body = json.loads(raw) if raw else None
+                return response.status, body, dict(response.headers.items())
+        except error.HTTPError as exc:
+            raw = exc.read().decode("utf-8")
+            body = json.loads(raw) if raw else None
+            return exc.code, body, dict(exc.headers.items())
 
     def post_json(self, path: str, payload: dict[str, Any]) -> tuple[int, Any]:
         return self.request_json(path, method="POST", payload=payload)
