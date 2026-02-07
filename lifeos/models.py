@@ -1,15 +1,37 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import field_validator, model_validator
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 
-class LifeNodeBase(SQLModel):
+class TaskStatus(str, Enum):
+    TODO = "TODO"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+
+
+class DiagnosticSeverity(str, Enum):
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+
+
+class AuditMixin(SQLModel):
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
+    )
+
+
+class LifeNodePayload(SQLModel):
     content: str
-    tags: str
+    tags: list[str] = Field(default_factory=list)
 
     @field_validator("content")
     @classmethod
@@ -19,15 +41,47 @@ class LifeNodeBase(SQLModel):
             raise ValueError("content must not be empty")
         return stripped
 
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("tags must be a list")
 
-class LifeNode(LifeNodeBase):
+        normalized: list[str] = []
+        for tag in value:
+            if not isinstance(tag, str):
+                raise ValueError("tags must only contain strings")
+            stripped = tag.strip()
+            if not stripped:
+                raise ValueError("tags must not contain empty values")
+            normalized.append(stripped)
+        return normalized
+
+
+class ProjectBase(SQLModel):
+    name: str
+    description: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_empty(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("name must not be empty")
+        return stripped
+
+
+class Project(ProjectBase, AuditMixin, table=True):
     id: str = Field(primary_key=True)
 
 
-class EventBase(LifeNodeBase):
+class EventBase(LifeNodePayload):
     start_time: datetime
     end_time: datetime
     is_fixed: bool = False
+    project_id: Optional[str] = Field(default=None, foreign_key="project.id")
 
     @model_validator(mode="after")
     def validate_time_range(self) -> "EventBase":
@@ -36,27 +90,24 @@ class EventBase(LifeNodeBase):
         return self
 
 
-class Event(EventBase, table=True):
+class Event(EventBase, AuditMixin, table=True):
     id: str = Field(primary_key=True)
+    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
 
 
 class EventCreate(EventBase):
     id: str
 
 
-class TaskBase(LifeNodeBase):
-    status: str
+class EventRead(EventBase, AuditMixin):
+    id: str
+
+
+class TaskBase(LifeNodePayload):
+    status: TaskStatus = TaskStatus.TODO
     deadline: Optional[datetime] = None
     estimated_duration_minutes: int
-    dependency_ids: str
-
-    @field_validator("status")
-    @classmethod
-    def status_must_not_be_empty(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("status must not be empty")
-        return stripped
+    project_id: Optional[str] = Field(default=None, foreign_key="project.id")
 
     @field_validator("estimated_duration_minutes")
     @classmethod
@@ -66,16 +117,87 @@ class TaskBase(LifeNodeBase):
         return value
 
 
-class Task(TaskBase, table=True):
+class Task(TaskBase, AuditMixin, table=True):
     id: str = Field(primary_key=True)
+    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    completed_at: Optional[datetime] = None
 
 
 class TaskCreate(TaskBase):
     id: str
+    dependency_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("dependency_ids", mode="before")
+    @classmethod
+    def validate_dependency_ids(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("dependency_ids must be a list")
+
+        normalized: list[str] = []
+        for dependency_id in value:
+            if not isinstance(dependency_id, str):
+                raise ValueError("dependency_ids must only contain strings")
+            stripped = dependency_id.strip()
+            if not stripped:
+                raise ValueError("dependency_ids must not contain empty values")
+            normalized.append(stripped)
+
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("dependency_ids must be unique")
+
+        return normalized
+
+    @model_validator(mode="after")
+    def task_must_not_depend_on_itself(self) -> "TaskCreate":
+        if self.id in self.dependency_ids:
+            raise ValueError("task cannot depend on itself")
+        return self
+
+
+class TaskRead(TaskBase, AuditMixin):
+    id: str
+    completed_at: Optional[datetime] = None
+    dependency_ids: list[str] = Field(default_factory=list)
+
+
+class TaskDependency(SQLModel, table=True):
+    predecessor_task_id: str = Field(foreign_key="task.id", primary_key=True)
+    successor_task_id: str = Field(foreign_key="task.id", primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Routine(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    name: str
+    task_template: str
+    project_id: Optional[str] = Field(default=None, foreign_key="project.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
+    )
+
+
+class RecurringRule(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    routine_id: str = Field(foreign_key="routine.id")
+    cadence: str
+    interval: int = 1
+    start_at: datetime
+    end_at: Optional[datetime] = None
+
+    @field_validator("interval")
+    @classmethod
+    def interval_must_be_positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("interval must be greater than 0")
+        return value
 
 
 class Diagnostic(SQLModel):
-    severity: str
+    severity: DiagnosticSeverity
     message: str
     start: datetime
     end: Optional[datetime] = None
