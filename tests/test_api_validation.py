@@ -75,7 +75,7 @@ class ApiValidationTests(unittest.TestCase):
         payload = {
             "id": "event-1",
             "content": "Morning run",
-            "tags": "health",
+            "tags": ["health"],
             "start_time": "2024-01-10T10:00:00",
             "end_time": "2024-01-10T09:00:00",
             "is_fixed": False,
@@ -89,10 +89,10 @@ class ApiValidationTests(unittest.TestCase):
         base_payload = {
             "id": "task-1",
             "content": "Write report",
-            "tags": "work",
-            "status": "todo",
+            "tags": ["work"],
+            "status": "TODO",
             "deadline": "2024-01-11T09:00:00",
-            "dependency_ids": "",
+            "dependency_ids": [],
         }
 
         zero_status_code, _ = self._post_json(
@@ -109,7 +109,7 @@ class ApiValidationTests(unittest.TestCase):
         payload = {
             "id": "event-2",
             "content": "   ",
-            "tags": "health",
+            "tags": ["health"],
             "start_time": "2024-01-10T08:00:00",
             "end_time": "2024-01-10T09:00:00",
             "is_fixed": False,
@@ -123,11 +123,11 @@ class ApiValidationTests(unittest.TestCase):
         payload = {
             "id": "task-2",
             "content": "Book flight",
-            "tags": "travel",
+            "tags": ["travel"],
             "status": "   ",
             "deadline": None,
             "estimated_duration_minutes": 30,
-            "dependency_ids": "",
+            "dependency_ids": [],
         }
 
         status_code, _ = self._post_json("/tasks", payload)
@@ -162,7 +162,7 @@ class ApiValidationTests(unittest.TestCase):
                 {
                     "id": "event-3",
                     "content": "Focus block",
-                    "tags": "deep-work",
+                    "tags": ["deep-work"],
                     "is_fixed": False,
                     "start_time": "2024-01-10T13:00:00",
                     "end_time": "2024-01-10T14:00:00",
@@ -170,7 +170,7 @@ class ApiValidationTests(unittest.TestCase):
                 {
                     "id": "event-4",
                     "content": "Break",
-                    "tags": "rest",
+                    "tags": ["rest"],
                     "is_fixed": False,
                     "start_time": "2024-01-10T13:20:00",
                     "end_time": "2024-01-10T13:40:00",
