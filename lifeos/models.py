@@ -99,6 +99,10 @@ class EventCreate(EventBase):
     id: str
 
 
+class EventUpdate(EventBase):
+    pass
+
+
 class EventRead(EventBase, AuditMixin):
     id: str
 
@@ -160,6 +164,32 @@ class TaskRead(TaskBase, AuditMixin):
     id: str
     completed_at: Optional[datetime] = None
     dependency_ids: list[str] = Field(default_factory=list)
+
+
+class TaskUpdate(TaskBase):
+    dependency_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("dependency_ids", mode="before")
+    @classmethod
+    def validate_dependency_ids(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("dependency_ids must be a list")
+
+        normalized: list[str] = []
+        for dependency_id in value:
+            if not isinstance(dependency_id, str):
+                raise ValueError("dependency_ids must only contain strings")
+            stripped = dependency_id.strip()
+            if not stripped:
+                raise ValueError("dependency_ids must not contain empty values")
+            normalized.append(stripped)
+
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("dependency_ids must be unique")
+
+        return normalized
 
 
 class TaskDependency(SQLModel, table=True):

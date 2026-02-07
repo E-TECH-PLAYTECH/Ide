@@ -71,6 +71,30 @@ class ApiValidationTests(unittest.TestCase):
             body = json.loads(exc.read().decode("utf-8"))
             return exc.code, body
 
+    def _request_json(
+        self, path: str, method: str = "GET", payload: dict | list | None = None
+    ) -> tuple[int, dict | list | None]:
+        data = None
+        headers = {}
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        req = request.Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=data,
+            headers=headers,
+            method=method,
+        )
+        try:
+            with request.urlopen(req, timeout=1) as response:
+                raw = response.read().decode("utf-8")
+                body = json.loads(raw) if raw else None
+                return response.status, body
+        except error.HTTPError as exc:
+            raw = exc.read().decode("utf-8")
+            body = json.loads(raw) if raw else None
+            return exc.code, body
+
     def test_create_event_with_reversed_time_range_returns_422(self) -> None:
         payload = {
             "id": "event-1",
@@ -133,6 +157,84 @@ class ApiValidationTests(unittest.TestCase):
         status_code, _ = self._post_json("/tasks", payload)
 
         self.assertEqual(status_code, 422)
+
+
+    def test_task_crud_dependencies_and_project_scoped_query(self) -> None:
+        status_code, _ = self._post_json(
+            "/tasks",
+            {
+                "id": "dep-1",
+                "content": "Draft outline",
+                "tags": ["work"],
+                "status": "TODO",
+                "deadline": "2024-01-10T09:00:00",
+                "estimated_duration_minutes": 30,
+                "project_id": "project-1",
+                "dependency_ids": [],
+            },
+        )
+        self.assertEqual(status_code, 201)
+
+        status_code, _ = self._post_json(
+            "/tasks",
+            {
+                "id": "task-1",
+                "content": "Write draft",
+                "tags": ["work", "writing"],
+                "status": "TODO",
+                "deadline": "2024-01-10T11:00:00",
+                "estimated_duration_minutes": 60,
+                "project_id": "project-1",
+                "dependency_ids": ["dep-1"],
+            },
+        )
+        self.assertEqual(status_code, 201)
+
+        status_code, body = self._request_json("/tasks/task-1/dependencies")
+        self.assertEqual(status_code, 200)
+        self.assertEqual(body, ["dep-1"])
+
+        status_code, body = self._request_json(
+            "/tasks/task-1/dependencies", method="PUT", payload=[]
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(body, [])
+
+        status_code, body = self._request_json(
+            "/projects/project-1/tasks?status=TODO&limit=1&offset=0"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(len(body), 1)
+        self.assertEqual(body[0]["project_id"], "project-1")
+
+        status_code, _ = self._request_json("/tasks/task-1", method="DELETE")
+        self.assertEqual(status_code, 204)
+
+    def test_event_filters_and_error_shape(self) -> None:
+        status_code, _ = self._post_json(
+            "/events",
+            {
+                "id": "event-a",
+                "content": "Daily standup",
+                "tags": ["team"],
+                "start_time": "2024-01-10T09:00:00",
+                "end_time": "2024-01-10T09:30:00",
+                "is_fixed": True,
+                "project_id": "project-1",
+            },
+        )
+        self.assertEqual(status_code, 201)
+
+        status_code, body = self._request_json(
+            "/events?is_fixed=true&project_id=project-1&limit=1&offset=0"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertEqual(len(body), 1)
+        self.assertEqual(body[0]["id"], "event-a")
+
+        status_code, body = self._request_json("/events/missing-event")
+        self.assertEqual(status_code, 404)
+        self.assertEqual(body["error"]["code"], "not_found")
 
     def test_lint_accepts_payload_only_event_shape(self) -> None:
         payload = {
