@@ -1,5 +1,9 @@
 # LifeOS
 
+## Planning documentation
+
+- Full implementation roadmap: `docs/implementation-plan.md`
+
 ## Environment profiles
 
 LifeOS supports three runtime profiles through `LIFEOS_ENV`:
