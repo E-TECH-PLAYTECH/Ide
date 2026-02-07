@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
+import logging
+import time
 from typing import Any, List, Optional
+from uuid import uuid4
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -10,8 +13,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
-from .database import get_session
+from .database import database_is_reachable, get_session
 from .linter import lint_events
+from .logging_utils import configure_logging, log_event
+from .metrics import metrics
 from .models import (
     Event,
     EventCreate,
@@ -40,6 +45,9 @@ ERROR_EXAMPLE = {
 }
 
 app = FastAPI(title="LifeOS")
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 
 
@@ -83,9 +91,47 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
     )
 
 
-@app.get("/health", summary="Health check endpoint")
-async def health_check() -> dict[str, str]:
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next: Any) -> JSONResponse:
+    start = time.perf_counter()
+    request_id = request.headers.get("X-Request-ID", str(uuid4()))
+    request.state.request_id = request_id
+
+    log_event(
+        logger,
+        "request.started",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+    )
+
+    response = await call_next(request)
+
+    duration_ms = round((time.perf_counter() - start) * 1000, 3)
+    response.headers["X-Request-ID"] = request_id
+    metrics.record_request(response.status_code, duration_ms)
+    log_event(
+        logger,
+        "request.completed",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=duration_ms,
+    )
+    return response
+
+
+@app.get("/health/live", summary="Liveness check endpoint")
+async def liveness_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health/ready", summary="Readiness check endpoint")
+async def readiness_check() -> JSONResponse:
+    if database_is_reachable():
+        return JSONResponse(status_code=status.HTTP_200_OK, content={"status": "ready"})
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "not_ready"})
 
 
 @app.post(
@@ -582,6 +628,7 @@ def list_project_tasks(
 
 @app.post("/lint", response_model=LintResponse, summary="Lint events from request body")
 async def lint(
+    http_request: Request,
     request: LintRequest = Body(
         ...,
         example={
@@ -595,13 +642,37 @@ async def lint(
         },
     )
 ) -> LintResponse:
+    started = time.perf_counter()
     diagnostics, summary = lint_events(request.events)
+    duration_ms = round((time.perf_counter() - started) * 1000, 3)
+    metrics.record_lint_execution(duration_ms)
+    log_event(
+        logger,
+        "lint.executed",
+        request_id=getattr(http_request.state, "request_id", None),
+        source="request",
+        event_count=len(request.events),
+        diagnostic_count=len(diagnostics),
+        duration_ms=duration_ms,
+    )
     return LintResponse(diagnostics=diagnostics, summary=summary)
 
 
 @app.get("/lint", response_model=LintResponse, summary="Lint persisted events")
-def lint_from_db(session: Session = Depends(get_session)) -> LintResponse:
+def lint_from_db(http_request: Request, session: Session = Depends(get_session)) -> LintResponse:
+    started = time.perf_counter()
     statement = select(Event)
     events = list(session.exec(statement).all())
     diagnostics, summary = lint_events(events)
+    duration_ms = round((time.perf_counter() - started) * 1000, 3)
+    metrics.record_lint_execution(duration_ms)
+    log_event(
+        logger,
+        "lint.executed",
+        request_id=getattr(http_request.state, "request_id", None),
+        source="database",
+        event_count=len(events),
+        diagnostic_count=len(diagnostics),
+        duration_ms=duration_ms,
+    )
     return LintResponse(diagnostics=diagnostics, summary=summary)
