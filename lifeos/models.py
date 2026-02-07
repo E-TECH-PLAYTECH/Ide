@@ -259,3 +259,69 @@ class LintRequest(SQLModel):
 class LintResponse(SQLModel):
     diagnostics: list[Diagnostic]
     summary: LintSummary
+
+
+class PlannerTaskInput(SQLModel):
+    id: str
+    content: str
+    estimated_duration_minutes: int
+    deadline: Optional[datetime] = None
+    dependency_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("estimated_duration_minutes")
+    @classmethod
+    def duration_must_be_positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("estimated_duration_minutes must be greater than 0")
+        return value
+
+
+class PlanEventInput(SQLModel):
+    id: str
+    content: str
+    start_time: datetime
+    end_time: datetime
+
+    @model_validator(mode="after")
+    def validate_time_range(self) -> "PlanEventInput":
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
+
+
+class PlannerRequest(SQLModel):
+    window_start: datetime
+    window_end: datetime
+    focus_hours_start: int = Field(ge=0, le=23)
+    focus_hours_end: int = Field(ge=1, le=24)
+    max_planned_minutes_per_day: int = Field(gt=0)
+    tasks: list[PlannerTaskInput]
+    fixed_events: list[PlanEventInput] = Field(default_factory=list)
+    dependency_graph: dict[str, list[str]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_window_and_focus(self) -> "PlannerRequest":
+        if self.window_end <= self.window_start:
+            raise ValueError("window_end must be after window_start")
+        if self.focus_hours_end <= self.focus_hours_start:
+            raise ValueError("focus_hours_end must be greater than focus_hours_start")
+        return self
+
+
+class PlanBlock(SQLModel):
+    block_type: str
+    ref_id: str
+    start_time: datetime
+    end_time: datetime
+    rationale: str
+
+
+class UnmetTaskWarning(SQLModel):
+    task_id: str
+    minutes_unplanned: int
+    reason: str
+
+
+class PlannerResponse(SQLModel):
+    blocks: list[PlanBlock]
+    unmet_task_warnings: list[UnmetTaskWarning] = Field(default_factory=list)
