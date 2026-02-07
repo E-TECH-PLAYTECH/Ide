@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
-from .database import create_db_and_tables, get_session
+from .database import get_session
 from .linter import lint_events
 from .models import (
     Event,
@@ -41,10 +41,6 @@ ERROR_EXAMPLE = {
 
 app = FastAPI(title="LifeOS")
 
-
-@app.on_event("startup")
-def on_startup() -> None:
-    create_db_and_tables()
 
 
 def _error_payload(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
